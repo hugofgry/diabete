@@ -1,68 +1,63 @@
-import pandas as pd
+import pytest
+import modeleTD
+import os
+from dotenv import load_dotenv
+from pathlib import Path
 import psycopg2 as psp
-df = pd.read_csv("/Users/hugofugeray/Desktop/diabetCO/archive/diabetes_binary_health_indicators_BRFSS2015.csv")
+import pandas as pd
+
+dotenv_path = Path('../credentials.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 
-def get_symptomes_from_DB():
-    conn = psp.connect(
-          database="diabete",
-          user = "hugofugeray",
-          password = "postgres",
-          host = "localhost",
-          port = "5432"
+conn = psp.connect(
+          database=os.getenv('DATABASE_DIABETE'),
+          user = os.getenv('USER_DIABETE'),
+          password = os.getenv('PASSWORD_DIABETE'),
+          host = os.getenv('HOST_DIABETE'),
+          port = os.getenv('PORT_DIABETE')
       )
-    c = conn.cursor()
-    c.execute(''' SELECT * FROM symptomes; ''')
-    conn.commit()
-    data = c.fetchall()
-    conn.close()
-
-    data = dict(data)
-    return data
-
-def insert_value_in_DB(value):
-    conn = psp.connect(
-          database="diabete",
-          user = "hugofugeray",
-          password = "postgres",
-          host = "localhost",
-          port = "5432"
-      )
-    c = conn.cursor()
-    c.execute(''' SELECT * FROM symptomes; ''')
-    conn.commit()
+c = conn.cursor()
 
 
-def insert_df_in_DB(df):
-
-    conn = psp.connect(
-          database="diabete",
-          user = "hugofugeray",
-          password = "postgres",
-          host = "localhost",
-          port = "5432"
-      )
-    c = conn.cursor()
+df = modeleTD.get_data(conn, c)
 
 
-    counter_row = 1
-    counter_value = 1
-    symptome_key = 1
+df.drop_duplicates(inplace=True)
+
+class_0 = df[df['diabetes_binary'] == 0]
+class_1 = df[df['diabetes_binary'] == 1]
+
+# over sampling of the minority class 1
+class_1_over = class_1.sample(len(class_0), replace=True)
+
+# Creating a new dataframe with over sampled class 1 df and class 0 df
+df1_new = pd.concat([class_1_over, class_0], axis=0)
+
+x_train ,x_test ,y_train ,y_test = modeleTD.create_train_data(df)
+
+modele = modeleTD.model(x_train,y_train)
+
+def testCo():
+
+  assert str(type(df))== "<class 'pandas.core.frame.DataFrame'>"
 
 
-    for row in df.iterrows():
+def testPrepro():
 
-          symptome_key = 1
-
-          for value in row[1][1:]:
-            value_tuple = (counter_value,value,symptome_key,counter_row)
-            print("Now inserting value :" + str(value_tuple))
-            c.execute(""" INSERT INTO Valeurs (id,valeur,symptome_id,patient_id) VALUES (%s, %s, %s, %s) """, value_tuple)
-            counter_value += 1
-            symptome_key += 1
-            conn.commit()
-
-          counter_row += 1
+  assert len(x_test) == round(0.2*len(df1_new))
+  assert len(y_test) == round(0.2*len(df1_new))
 
 
-insert_df_in_DB(df)
+def testModel():
+
+  assert str(type(modele))== "<class 'sklearn.tree._classes.DecisionTreeClassifier'>"
+
+
+def test():
+
+  testCo()
+  testPrepro()
+  testModel()
+
+test()
